@@ -32,6 +32,7 @@ type Session struct {
 	cfg         *project.Config
 	messages    []llm.Message
 	debug       bool
+	scanner     *bufio.Scanner // Scanner for user input (used for confirmations)
 }
 
 // NewSession creates a new chat session
@@ -42,6 +43,7 @@ func NewSession(client *llm.Client, projectRoot string, cfg *project.Config, deb
 		cfg:         cfg,
 		messages:    make([]llm.Message, 0),
 		debug:       debug,
+		scanner:     bufio.NewScanner(os.Stdin),
 	}
 
 	// Add system message
@@ -58,22 +60,20 @@ func (s *Session) Start() error {
 	// Print welcome message
 	s.printWelcome()
 
-	scanner := bufio.NewScanner(os.Stdin)
-
 	for {
 		// Print prompt
 		fmt.Printf("\n%sYou:%s ", colorCyan+colorBold, colorReset)
 
 		// Read input
-		if !scanner.Scan() {
+		if !s.scanner.Scan() {
 			// EOF or error
-			if err := scanner.Err(); err != nil {
+			if err := s.scanner.Err(); err != nil {
 				return fmt.Errorf("error reading input: %w", err)
 			}
 			break
 		}
 
-		input := strings.TrimSpace(scanner.Text())
+		input := strings.TrimSpace(s.scanner.Text())
 
 		// Handle empty input
 		if input == "" {

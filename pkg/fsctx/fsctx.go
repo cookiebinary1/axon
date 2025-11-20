@@ -108,3 +108,53 @@ func GetFileExtension(filePath string) string {
 	ext := filepath.Ext(filePath)
 	return strings.ToLower(ext)
 }
+
+// WriteFile writes content to a file relative to the project root.
+// It validates that the path is safe (not ignored, within project root).
+// Creates parent directories if they don't exist.
+func WriteFile(projectRoot, filePath string, content string, cfg *project.Config) error {
+	// Normalize path separators
+	normalizedPath := strings.ReplaceAll(filePath, "\\", "/")
+	
+	// Check if path should be ignored
+	if ShouldIgnore(normalizedPath, cfg) {
+		return fmt.Errorf("cannot write to ignored path: %s", filePath)
+	}
+	
+	fullPath := ResolvePath(projectRoot, filePath)
+	
+	// Ensure path is within project root (security check)
+	projectRootAbs, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project root: %w", err)
+	}
+	
+	filePathAbs, err := filepath.Abs(fullPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve file path: %w", err)
+	}
+	
+	// Check that the file path is within project root
+	relPath, err := filepath.Rel(projectRootAbs, filePathAbs)
+	if err != nil {
+		return fmt.Errorf("failed to compute relative path: %w", err)
+	}
+	
+	// If relative path starts with "..", it's outside the project root
+	if strings.HasPrefix(relPath, "..") {
+		return fmt.Errorf("cannot write outside project root: %s", filePath)
+	}
+	
+	// Create parent directories if they don't exist
+	parentDir := filepath.Dir(fullPath)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		return fmt.Errorf("failed to create parent directories: %w", err)
+	}
+	
+	// Write file
+	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+	
+	return nil
+}

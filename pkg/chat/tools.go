@@ -13,6 +13,22 @@ import (
 	"github.com/axon/pkg/logger"
 )
 
+// confirmAction asks the user to confirm an action interactively
+func (s *Session) confirmAction(action, description string) (bool, error) {
+	fmt.Printf("\n%s⚠️  WRITE OPERATION REQUESTED%s\n", colorYellow+colorBold, colorReset)
+	fmt.Printf("%sAction:%s %s\n", colorCyan, colorReset, action)
+	fmt.Printf("%sDetails:%s %s\n", colorCyan, colorReset, description)
+	fmt.Printf("%sDo you want to proceed? (yes/no/y/n):%s ", colorYellow+colorBold, colorReset)
+
+	// Use the session's scanner for input
+	if !s.scanner.Scan() {
+		return false, fmt.Errorf("failed to read confirmation input")
+	}
+
+	response := strings.TrimSpace(strings.ToLower(s.scanner.Text()))
+	return response == "yes" || response == "y", nil
+}
+
 // ExecuteTool executes a tool call and returns the result
 func (s *Session) ExecuteTool(name string, args map[string]interface{}) (string, error) {
 	// Log tool execution
@@ -31,6 +47,16 @@ func (s *Session) ExecuteTool(name string, args map[string]interface{}) (string,
 		result, err = s.toolGrep(args)
 	case "read_file_lines":
 		result, err = s.toolReadFileLines(args)
+	case "write_file":
+		result, err = s.toolWriteFile(args)
+	case "create_file":
+		result, err = s.toolCreateFile(args)
+	case "update_file":
+		result, err = s.toolUpdateFile(args)
+	case "string_replace":
+		result, err = s.toolStringReplace(args)
+	case "create_directory":
+		result, err = s.toolCreateDirectory(args)
 	default:
 		err = fmt.Errorf("unknown tool: %s", name)
 	}
@@ -213,6 +239,250 @@ func (s *Session) toolReadFileLines(args map[string]interface{}) (string, error)
 		"start_line": startLine,
 		"end_line":   endLine,
 		"content":    content,
+	}
+
+	jsonResult, _ := json.Marshal(result)
+	return string(jsonResult), nil
+}
+
+// toolWriteFile writes content to a file (creates new or overwrites existing)
+func (s *Session) toolWriteFile(args map[string]interface{}) (string, error) {
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", fmt.Errorf("path argument is required")
+	}
+
+	content, ok := args["content"].(string)
+	if !ok {
+		return "", fmt.Errorf("content argument is required")
+	}
+
+	// Check if file exists
+	fullPath := filepath.Join(s.projectRoot, path)
+	fileExists := false
+	if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
+		fileExists = true
+	}
+
+	action := "Create new file"
+	description := fmt.Sprintf("File: %s\nSize: ~%d bytes", path, len(content))
+	if fileExists {
+		action = "Overwrite existing file"
+		description = fmt.Sprintf("File: %s (WILL BE OVERWRITTEN)\nNew size: ~%d bytes", path, len(content))
+	}
+
+	// Require confirmation
+	confirmed, err := s.confirmAction(action, description)
+	if err != nil {
+		return "", fmt.Errorf("failed to get confirmation: %w", err)
+	}
+	if !confirmed {
+		return `{"cancelled": true, "message": "User cancelled the operation"}`, nil
+	}
+
+	err = fsctx.WriteFile(s.projectRoot, path, content, s.cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"path":    path,
+		"success": true,
+		"message": "File written successfully",
+	}
+
+	jsonResult, _ := json.Marshal(result)
+	return string(jsonResult), nil
+}
+
+// toolCreateFile creates a new file (fails if file already exists)
+func (s *Session) toolCreateFile(args map[string]interface{}) (string, error) {
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", fmt.Errorf("path argument is required")
+	}
+
+	content, ok := args["content"].(string)
+	if !ok {
+		return "", fmt.Errorf("content argument is required")
+	}
+
+	fullPath := filepath.Join(s.projectRoot, path)
+	if _, err := os.Stat(fullPath); err == nil {
+		return "", fmt.Errorf("file already exists: %s", path)
+	}
+
+	action := "Create new file"
+	description := fmt.Sprintf("File: %s\nSize: ~%d bytes", path, len(content))
+
+	// Require confirmation
+	confirmed, err := s.confirmAction(action, description)
+	if err != nil {
+		return "", fmt.Errorf("failed to get confirmation: %w", err)
+	}
+	if !confirmed {
+		return `{"cancelled": true, "message": "User cancelled the operation"}`, nil
+	}
+
+	err = fsctx.WriteFile(s.projectRoot, path, content, s.cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to create file: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"path":    path,
+		"success": true,
+		"message": "File created successfully",
+	}
+
+	jsonResult, _ := json.Marshal(result)
+	return string(jsonResult), nil
+}
+
+// toolUpdateFile updates a file by replacing its entire content
+func (s *Session) toolUpdateFile(args map[string]interface{}) (string, error) {
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", fmt.Errorf("path argument is required")
+	}
+
+	content, ok := args["content"].(string)
+	if !ok {
+		return "", fmt.Errorf("content argument is required")
+	}
+
+	fullPath := filepath.Join(s.projectRoot, path)
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("file does not exist: %s", path)
+	}
+
+	action := "Update file"
+	description := fmt.Sprintf("File: %s\nNew size: ~%d bytes", path, len(content))
+
+	// Require confirmation
+	confirmed, err := s.confirmAction(action, description)
+	if err != nil {
+		return "", fmt.Errorf("failed to get confirmation: %w", err)
+	}
+	if !confirmed {
+		return `{"cancelled": true, "message": "User cancelled the operation"}`, nil
+	}
+
+	err = fsctx.WriteFile(s.projectRoot, path, content, s.cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to update file: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"path":    path,
+		"success": true,
+		"message": "File updated successfully",
+	}
+
+	jsonResult, _ := json.Marshal(result)
+	return string(jsonResult), nil
+}
+
+// toolStringReplace replaces a string pattern in a file
+func (s *Session) toolStringReplace(args map[string]interface{}) (string, error) {
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", fmt.Errorf("path argument is required")
+	}
+
+	oldStr, ok := args["old_string"].(string)
+	if !ok {
+		return "", fmt.Errorf("old_string argument is required")
+	}
+
+	newStr, ok := args["new_string"].(string)
+	if !ok {
+		return "", fmt.Errorf("new_string argument is required")
+	}
+
+	// Read file first
+	content, _, err := fsctx.ReadFile(s.projectRoot, path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// Check if old string exists
+	if !strings.Contains(content, oldStr) {
+		return "", fmt.Errorf("pattern not found in file: %s", path)
+	}
+
+	// Count occurrences
+	count := strings.Count(content, oldStr)
+
+	action := "Replace string in file"
+	description := fmt.Sprintf("File: %s\nPattern occurrences: %d\nReplacing: %q\nWith: %q", path, count, oldStr, newStr)
+
+	// Require confirmation
+	confirmed, err := s.confirmAction(action, description)
+	if err != nil {
+		return "", fmt.Errorf("failed to get confirmation: %w", err)
+	}
+	if !confirmed {
+		return `{"cancelled": true, "message": "User cancelled the operation"}`, nil
+	}
+
+	// Replace
+	newContent := strings.ReplaceAll(content, oldStr, newStr)
+
+	err = fsctx.WriteFile(s.projectRoot, path, newContent, s.cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"path":         path,
+		"success":      true,
+		"replacements": count,
+		"message":      fmt.Sprintf("Replaced %d occurrence(s)", count),
+	}
+
+	jsonResult, _ := json.Marshal(result)
+	return string(jsonResult), nil
+}
+
+// toolCreateDirectory creates a directory
+func (s *Session) toolCreateDirectory(args map[string]interface{}) (string, error) {
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", fmt.Errorf("path argument is required")
+	}
+
+	fullPath := filepath.Join(s.projectRoot, path)
+
+	// Check if already exists
+	if info, err := os.Stat(fullPath); err == nil {
+		if info.IsDir() {
+			return "", fmt.Errorf("directory already exists: %s", path)
+		}
+		return "", fmt.Errorf("path exists but is not a directory: %s", path)
+	}
+
+	action := "Create directory"
+	description := fmt.Sprintf("Path: %s", path)
+
+	// Require confirmation
+	confirmed, err := s.confirmAction(action, description)
+	if err != nil {
+		return "", fmt.Errorf("failed to get confirmation: %w", err)
+	}
+	if !confirmed {
+		return `{"cancelled": true, "message": "User cancelled the operation"}`, nil
+	}
+
+	err = os.MkdirAll(fullPath, 0755)
+	if err != nil {
+		return "", fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"path":    path,
+		"success": true,
+		"message": "Directory created successfully",
 	}
 
 	jsonResult, _ := json.Marshal(result)

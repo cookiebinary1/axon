@@ -110,5 +110,110 @@ func GetAvailableTools() []Tool {
 				},
 			},
 		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "write_file",
+				Description: "Write content to a file. Path is relative to project root. Creates the file if it doesn't exist, overwrites if it does. Requires user confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the file relative to project root",
+						},
+						"content": map[string]interface{}{
+							"type":        "string",
+							"description": "Content to write to the file",
+						},
+					},
+					"required": []string{"path", "content"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "create_file",
+				Description: "Create a new file with content. Path is relative to project root. Fails if file already exists. Requires user confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the file relative to project root",
+						},
+						"content": map[string]interface{}{
+							"type":        "string",
+							"description": "Content to write to the file",
+						},
+					},
+					"required": []string{"path", "content"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "update_file",
+				Description: "Update an existing file by replacing its entire content. Path is relative to project root. Fails if file doesn't exist. Requires user confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the file relative to project root",
+						},
+						"content": map[string]interface{}{
+							"type":        "string",
+							"description": "New content for the file",
+						},
+					},
+					"required": []string{"path", "content"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "string_replace",
+				Description: "Replace all occurrences of a string pattern in a file. Path is relative to project root. Requires user confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the file relative to project root",
+						},
+						"old_string": map[string]interface{}{
+							"type":        "string",
+							"description": "String pattern to replace",
+						},
+						"new_string": map[string]interface{}{
+							"type":        "string",
+							"description": "Replacement string",
+						},
+					},
+					"required": []string{"path", "old_string", "new_string"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "create_directory",
+				Description: "Create a directory. Path is relative to project root. Creates parent directories if needed. Requires user confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the directory relative to project root",
+						},
+					},
+					"required": []string{"path"},
+				},
+			},
+		},
 	}
 }
