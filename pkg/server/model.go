@@ -3,11 +3,8 @@ package server
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"strings"
-
-	"golang.org/x/term"
 )
 
 // ModelSize represents a model size variant
@@ -73,7 +70,7 @@ const (
 	colorReverse = "\033[7m" // Reverse video for selection (may cause issues, using background instead)
 )
 
-// interactiveSelect displays an interactive menu and allows selection using arrow keys or numbers
+// interactiveSelect displays a simple menu and allows selection using numbers
 func interactiveSelect(title string, items []string, descriptions []string, defaultIndex int) (int, error) {
 	if len(items) == 0 {
 		return 0, fmt.Errorf("no items to select from")
@@ -82,108 +79,11 @@ func interactiveSelect(title string, items []string, descriptions []string, defa
 		defaultIndex = 0
 	}
 
-	// Check if stdin is a terminal
-	fd := int(os.Stdin.Fd())
-	if !term.IsTerminal(fd) {
-		// Fallback to simple number input if not a terminal
-		return simpleSelect(title, items, descriptions, defaultIndex)
-	}
-
-	// Save original terminal state
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		// Fallback to simple input if raw mode fails
-		return simpleSelect(title, items, descriptions, defaultIndex)
-	}
-
-	// Ensure terminal is restored even on panic
-	defer func() {
-		term.Restore(fd, oldState)
-		// Show cursor again
-		fmt.Fprintf(os.Stderr, "\033[?25h")
-	}()
-
-	// Hide cursor for cleaner menu
-	fmt.Fprintf(os.Stderr, "\033[?25l")
-
-	selected := defaultIndex
-	reader := bufio.NewReader(os.Stdin)
-
-	// Print initial menu - use simple approach without clearing screen
-	fmt.Fprintf(os.Stderr, "\n") // Just a newline to separate
-	printMenu(title, items, descriptions, selected)
-
-	for {
-		// Read a single character
-		char, err := reader.ReadByte()
-		if err != nil {
-			if err == io.EOF {
-				return selected, nil
-			}
-			return selected, err
-		}
-
-		// Handle escape sequences (arrow keys)
-		if char == 0x1b { // ESC
-			// Read the next two bytes to determine the arrow key
-			// Use ReadByte to ensure we get all bytes
-			next1, err1 := reader.ReadByte()
-			if err1 != nil {
-				continue
-			}
-			if next1 != '[' {
-				// Not an arrow key sequence, ignore
-				continue
-			}
-			next2, err2 := reader.ReadByte()
-			if err2 != nil {
-				continue
-			}
-			switch next2 {
-			case 'A': // Up arrow
-				if selected > 0 {
-					selected--
-				} else {
-					selected = len(items) - 1
-				}
-				redrawMenu(title, items, descriptions, selected)
-			case 'B': // Down arrow
-				if selected < len(items)-1 {
-					selected++
-				} else {
-					selected = 0
-				}
-				redrawMenu(title, items, descriptions, selected)
-			}
-			continue
-		}
-
-		// Handle Enter key
-		if char == '\r' || char == '\n' {
-			// Clear the menu before returning
-			fmt.Fprintf(os.Stderr, "\033[2J\033[H\033[?25h")
-			return selected, nil
-		}
-
-		// Handle number keys (1-9) - immediately confirm selection
-		if char >= '1' && char <= '9' {
-			num := int(char - '0')
-			if num <= len(items) {
-				selected = num - 1
-				// Clear the menu before returning
-				fmt.Fprintf(os.Stderr, "\033[2J\033[H\033[?25h")
-				return selected, nil
-			}
-		}
-
-		// Handle Ctrl+C
-		if char == 0x03 {
-			return selected, fmt.Errorf("interrupted by user")
-		}
-	}
+	// Always use simple text-based selection - no fancy terminal stuff
+	return simpleSelect(title, items, descriptions, defaultIndex)
 }
 
-// simpleSelect is a fallback for non-terminal input
+// simpleSelect displays a simple numbered menu for selection
 func simpleSelect(title string, items []string, descriptions []string, defaultIndex int) (int, error) {
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "════════════════════════════════════════════════════════════\n")
@@ -191,6 +91,7 @@ func simpleSelect(title string, items []string, descriptions []string, defaultIn
 	fmt.Fprintf(os.Stderr, "════════════════════════════════════════════════════════════\n")
 	fmt.Fprintf(os.Stderr, "\n")
 
+	// Print menu items with numbers
 	for i, item := range items {
 		defaultMark := ""
 		if i == defaultIndex {
@@ -203,7 +104,12 @@ func simpleSelect(title string, items []string, descriptions []string, defaultIn
 		fmt.Fprintf(os.Stderr, "\n")
 	}
 
-	fmt.Fprintf(os.Stderr, "Enter your choice (1-%d, or Enter for default): ", len(items))
+	// Prompt for input
+	fmt.Fprintf(os.Stderr, "Enter your choice (1-%d", len(items))
+	if defaultIndex >= 0 {
+		fmt.Fprintf(os.Stderr, ", or Enter for %d", defaultIndex+1)
+	}
+	fmt.Fprintf(os.Stderr, "): ")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {
@@ -217,59 +123,10 @@ func simpleSelect(title string, items []string, descriptions []string, defaultIn
 
 	var index int
 	if _, err := fmt.Sscanf(choice, "%d", &index); err != nil || index < 1 || index > len(items) {
-		return defaultIndex, fmt.Errorf("invalid choice: %s", choice)
+		return defaultIndex, fmt.Errorf("invalid choice: %s (please choose 1-%d)", choice, len(items))
 	}
 
 	return index - 1, nil
-}
-
-// printMenu prints the menu with the selected item highlighted
-func printMenu(title string, items []string, descriptions []string, selected int) {
-	// Simple, clean output without screen clearing
-	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "════════════════════════════════════════════════════════════\n")
-	fmt.Fprintf(os.Stderr, "  %s\n", title)
-	fmt.Fprintf(os.Stderr, "════════════════════════════════════════════════════════════\n")
-	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "%sUse ↑↓ arrows or numbers to select, Enter to confirm%s\n", colorYellow, colorReset)
-	fmt.Fprintf(os.Stderr, "\n")
-
-	// Print menu items with simple formatting
-	for i, item := range items {
-		if i == selected {
-			fmt.Fprintf(os.Stderr, "  %s▶ %s%s\n", colorGreen+colorBold, item, colorReset)
-		} else {
-			fmt.Fprintf(os.Stderr, "    %s\n", item)
-		}
-		if i < len(descriptions) && descriptions[i] != "" {
-			if i == selected {
-				fmt.Fprintf(os.Stderr, "     %s%s%s\n", colorGreen, descriptions[i], colorReset)
-			} else {
-				fmt.Fprintf(os.Stderr, "     %s\n", descriptions[i])
-			}
-		}
-		fmt.Fprintf(os.Stderr, "\n")
-	}
-}
-
-// redrawMenu updates the menu display with new selection
-func redrawMenu(title string, items []string, descriptions []string, selected int) {
-	// Calculate total lines: header (3) + instructions (2) + items
-	totalLines := 5 // header (3) + instructions (2)
-	for i := 0; i < len(items); i++ {
-		totalLines++ // item line
-		if i < len(descriptions) && descriptions[i] != "" {
-			totalLines++ // description line
-		}
-		totalLines++ // blank line after each item
-	}
-	
-	// Move cursor up and clear from cursor to end
-	fmt.Fprintf(os.Stderr, "\033[%dA", totalLines)
-	fmt.Fprintf(os.Stderr, "\033[J")
-	
-	// Re-print menu
-	printMenu(title, items, descriptions, selected)
 }
 
 // SelectModel interactively prompts the user to select a model in two steps:

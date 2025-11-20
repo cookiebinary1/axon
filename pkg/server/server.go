@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -9,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -102,7 +100,6 @@ func (s *Server) Start() error {
 		s.Stop() // Try to stop if we failed to start
 		return fmt.Errorf("server failed to become ready: %w", err)
 	}
-
 
 	fmt.Fprintf(os.Stderr, "%sLLM server is ready at %s%s\n", colorGreen+colorBold, s.baseURL, colorReset)
 	return nil
@@ -212,40 +209,6 @@ func (s *Server) SetupSignalHandling() {
 		s.Stop()
 		os.Exit(0)
 	}()
-}
-
-// shouldShowOutput determines if a line of output should be shown to the user
-// Filters out verbose debug output from llama-server
-func (s *Server) shouldShowOutput(line string) bool {
-	// In debug mode, show everything
-	if s.debug {
-		return true
-	}
-
-	// Filter out verbose slot/debug messages
-	lowerLine := strings.ToLower(line)
-	skipPatterns := []string{
-		"slot update_slots",
-		"slot launch_slot_",
-		"slot get_availabl",
-		"params_from_",
-		"chat format:",
-		"sampler chain:",
-		"processing task",
-		"prompt processing progress",
-		"n_tokens =",
-		"memory_seq_rm",
-		"batch.n_tokens",
-	}
-
-	for _, pattern := range skipPatterns {
-		if strings.Contains(lowerLine, pattern) {
-			return false
-		}
-	}
-
-	// Show everything else (errors, important messages, download progress, etc.)
-	return true
 }
 
 // CheckRunning checks if a server is already running at the given URL
