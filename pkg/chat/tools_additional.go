@@ -729,3 +729,58 @@ func (s *Session) toolFindSymbolReferences(args map[string]interface{}) (string,
 	return string(jsonResult), nil
 }
 
+// toolExecute executes a shell command
+func (s *Session) toolExecute(args map[string]interface{}) (string, error) {
+	command, ok := args["command"].(string)
+	if !ok || command == "" {
+		return "", fmt.Errorf("command argument is required")
+	}
+
+	description := command
+	if desc, ok := args["description"].(string); ok && desc != "" {
+		description = desc
+	}
+
+	action := "Execute shell command"
+	confirmDesc := fmt.Sprintf("Command: %s\n⚠️  This will execute a shell command with your user permissions!", command)
+	if description != command {
+		confirmDesc = fmt.Sprintf("Description: %s\nCommand: %s\n⚠️  This will execute a shell command with your user permissions!", description, command)
+	}
+
+	confirmed, err := s.confirmAction(action, confirmDesc)
+	if err != nil {
+		return "", fmt.Errorf("failed to get confirmation: %w", err)
+	}
+	if !confirmed {
+		return `{"cancelled": true, "message": "User cancelled the operation"}`, nil
+	}
+
+	// Execute command in project root
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Dir = s.projectRoot
+
+	stdout, err := cmd.Output()
+	var stderr []byte
+	var exitCode int
+
+	if err != nil {
+		exitError, ok := err.(*exec.ExitError)
+		if ok {
+			stderr = exitError.Stderr
+			exitCode = exitError.ExitCode()
+		} else {
+			return "", fmt.Errorf("failed to execute command: %w", err)
+		}
+	}
+
+	result := map[string]interface{}{
+		"command":   command,
+		"stdout":    string(stdout),
+		"stderr":    string(stderr),
+		"exit_code": exitCode,
+		"success":   exitCode == 0,
+	}
+
+	jsonResult, _ := json.Marshal(result)
+	return string(jsonResult), nil
+}
