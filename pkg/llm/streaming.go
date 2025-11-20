@@ -147,9 +147,6 @@ func (c *Client) chatCompletionStream(ctx context.Context, reqBody ChatCompletio
 		// Extract JSON data
 		data := strings.TrimPrefix(line, "data: ")
 
-		// Log raw SSE data for debugging
-		logger.Logf("📡 SSE CHUNK: %s\n", data)
-
 		// Check for done signal
 		if data == "[DONE]" {
 			break
@@ -182,6 +179,8 @@ func (c *Client) chatCompletionStream(ctx context.Context, reqBody ChatCompletio
 		// Handle content delta
 		if choice.Delta.Content != "" {
 			fullResponse.WriteString(choice.Delta.Content)
+			// Log content chunks for debugging
+			logger.Logf("📝 CONTENT CHUNK: %q\n", choice.Delta.Content)
 			// Call callback for streaming display
 			if callback != nil {
 				if err := callback(choice.Delta.Content); err != nil {

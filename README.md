@@ -12,6 +12,43 @@
 - Project root detection (finds `.git` or `.axon.yml`)
 - Configurable ignore patterns for large projects
 
+## Prerequisites
+
+axon requires **llama-server** (from llama.cpp) to be installed and available in your PATH.
+
+### Installing llama-server
+
+**macOS:**
+```bash
+# Using Homebrew
+brew install llama.cpp
+
+# Or build from source
+git clone https://github.com/ggerganov/llama.cpp.git
+cd llama.cpp
+make
+# Binary will be at ./server
+```
+
+**Linux:**
+```bash
+# Build from source
+git clone https://github.com/ggerganov/llama.cpp.git
+cd llama.cpp
+make
+# Binary will be at ./server
+```
+
+**Windows:**
+```bash
+# Using Git Bash or WSL
+git clone https://github.com/ggerganov/llama.cpp.git
+cd llama.cpp
+# Use CMake to build (see llama.cpp README for details)
+```
+
+**Note:** axon can automatically start and stop llama-server for you (enabled by default). If you prefer to manage it manually, you can disable auto-start in the configuration.
+
 ## Installation
 
 Build from source:
@@ -25,20 +62,6 @@ Or install globally:
 ```bash
 go install ./cmd/axon
 ```
-
-## Prerequisites
-
-axon requires **llama-server** to be installed and available in your PATH (or configured via `server_path` in config).
-
-**Important:** axon can automatically start and stop llama-server for you! This is enabled by default.
-
-**How it works:**
-1. When you run `axon`, it first checks if llama-server is already running
-2. If the server is already running → starts chat immediately
-3. If not → prompts you to select a model (3B or 7B), starts the server, then starts chat
-4. When you exit axon → automatically stops the server (if it started it)
-
-If you prefer to manage llama-server manually, you can disable auto-start in the configuration.
 
 ## Configuration
 
@@ -120,7 +143,8 @@ While in chat mode, you can use these commands:
 2. **Server Detection**: Checks if llama-server is already running at the configured URL
 
 3. **Model Selection** (if server not running): If `auto_start` is enabled (default):
-   - Prompts you to select a model (3B or 7B)
+   - Prompts you to select a model family (Qwen2.5-Coder, DeepSeek Coder, CodeLlama, StarCoder)
+   - Then prompts you to select a size variant (1.5B, 3B, 7B, etc.)
    - Automatically starts llama-server with your selected model
    - Waits for the server to be ready before starting chat
 

@@ -69,7 +69,8 @@ var AvailableModelFamilies = []ModelFamily{
 // ANSI color codes for highlighting (additional to those in server.go)
 const (
 	colorCyan    = "\033[36m"
-	colorReverse = "\033[7m" // Reverse video for selection
+	colorMagenta = "\033[35m"
+	colorReverse = "\033[7m" // Reverse video for selection (may cause issues, using background instead)
 )
 
 // interactiveSelect displays an interactive menu and allows selection using arrow keys or numbers
@@ -108,7 +109,8 @@ func interactiveSelect(title string, items []string, descriptions []string, defa
 	selected := defaultIndex
 	reader := bufio.NewReader(os.Stdin)
 
-	// Print initial menu
+	// Print initial menu - use simple approach without clearing screen
+	fmt.Fprintf(os.Stderr, "\n") // Just a newline to separate
 	printMenu(title, items, descriptions, selected)
 
 	for {
@@ -223,9 +225,8 @@ func simpleSelect(title string, items []string, descriptions []string, defaultIn
 
 // printMenu prints the menu with the selected item highlighted
 func printMenu(title string, items []string, descriptions []string, selected int) {
-	// Only clear screen if this is the first print (not a redraw)
-	// We'll use a different approach - save cursor position and restore
-	fmt.Fprintf(os.Stderr, "\033[2J\033[H") // Clear screen and move to top
+	// Simple, clean output without screen clearing
+	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "════════════════════════════════════════════════════════════\n")
 	fmt.Fprintf(os.Stderr, "  %s\n", title)
 	fmt.Fprintf(os.Stderr, "════════════════════════════════════════════════════════════\n")
@@ -233,15 +234,16 @@ func printMenu(title string, items []string, descriptions []string, selected int
 	fmt.Fprintf(os.Stderr, "%sUse ↑↓ arrows or numbers to select, Enter to confirm%s\n", colorYellow, colorReset)
 	fmt.Fprintf(os.Stderr, "\n")
 
+	// Print menu items with simple formatting
 	for i, item := range items {
 		if i == selected {
-			fmt.Fprintf(os.Stderr, "%s%s  ▶ %s%s\n", colorReverse+colorBold, item, colorReset, colorReset)
+			fmt.Fprintf(os.Stderr, "  %s▶ %s%s\n", colorGreen+colorBold, item, colorReset)
 		} else {
-			fmt.Fprintf(os.Stderr, "     %s\n", item)
+			fmt.Fprintf(os.Stderr, "    %s\n", item)
 		}
 		if i < len(descriptions) && descriptions[i] != "" {
 			if i == selected {
-				fmt.Fprintf(os.Stderr, "%s     %s%s\n", colorReverse, descriptions[i], colorReset)
+				fmt.Fprintf(os.Stderr, "     %s%s%s\n", colorGreen, descriptions[i], colorReset)
 			} else {
 				fmt.Fprintf(os.Stderr, "     %s\n", descriptions[i])
 			}
@@ -252,23 +254,20 @@ func printMenu(title string, items []string, descriptions []string, selected int
 
 // redrawMenu updates the menu display with new selection
 func redrawMenu(title string, items []string, descriptions []string, selected int) {
-	// Calculate how many lines we need to clear
-	// Header: 3 lines (separator, title, separator)
-	// Instructions: 2 lines (text + blank)
-	// Items: each item takes 2 lines (item + blank), or 3 if it has description
-	lines := 3 + 2 // header + instructions
+	// Calculate total lines: header (3) + instructions (2) + items
+	totalLines := 5 // header (3) + instructions (2)
 	for i := 0; i < len(items); i++ {
-		lines++ // item line
+		totalLines++ // item line
 		if i < len(descriptions) && descriptions[i] != "" {
-			lines++ // description line
+			totalLines++ // description line
 		}
-		lines++ // blank line after each item
+		totalLines++ // blank line after each item
 	}
-
-	// Move cursor up and clear
-	fmt.Fprintf(os.Stderr, "\033[%dA", lines)
+	
+	// Move cursor up and clear from cursor to end
+	fmt.Fprintf(os.Stderr, "\033[%dA", totalLines)
 	fmt.Fprintf(os.Stderr, "\033[J")
-
+	
 	// Re-print menu
 	printMenu(title, items, descriptions, selected)
 }

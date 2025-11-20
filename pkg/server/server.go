@@ -86,33 +86,14 @@ func (s *Server) Start() error {
 	fmt.Fprintf(os.Stderr, "%sWaiting for server to be ready...%s\n", colorYellow, colorReset)
 	fmt.Fprintf(os.Stderr, "%s(This may take a while if downloading the model)%s\n\n", colorYellow, colorReset)
 
-	// Start goroutines to handle output
-	outputDone := make(chan bool, 2)
-	
-	// Handle stdout - show important messages, filter out debug noise
+	// Start goroutines to discard output (we don't want to show llama-server output)
+	// In debug mode, we still discard everything - use AXON_DEBUG=1 for detailed logs
 	go func() {
-		scanner := bufio.NewScanner(stdoutPipe)
-		for scanner.Scan() {
-			line := scanner.Text()
-			// Only show lines that are likely important (download progress, errors, etc.)
-			// Filter out verbose debug output like "slot update_slots", "slot launch_slot_", etc.
-			if s.shouldShowOutput(line) {
-				fmt.Fprintf(os.Stderr, "%s\n", line)
-			}
-		}
-		outputDone <- true
+		io.Copy(io.Discard, stdoutPipe)
 	}()
 
-	// Handle stderr - show important messages
 	go func() {
-		scanner := bufio.NewScanner(stderrPipe)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if s.shouldShowOutput(line) {
-				fmt.Fprintf(os.Stderr, "%s\n", line)
-			}
-		}
-		outputDone <- true
+		io.Copy(io.Discard, stderrPipe)
 	}()
 
 	// Wait for server to be ready
@@ -122,17 +103,6 @@ func (s *Server) Start() error {
 		return fmt.Errorf("server failed to become ready: %w", err)
 	}
 
-	// After server is ready, continue reading output but filter it more aggressively
-	// (in background, don't block)
-	go func() {
-		// Wait for initial output to finish
-		<-outputDone
-		<-outputDone
-		
-		// Continue reading but discard verbose output
-		io.Copy(io.Discard, stdoutPipe)
-		io.Copy(io.Discard, stderrPipe)
-	}()
 
 	fmt.Fprintf(os.Stderr, "%sLLM server is ready at %s%s\n", colorGreen+colorBold, s.baseURL, colorReset)
 	return nil

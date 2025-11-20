@@ -185,13 +185,18 @@ func (s *Session) Start() error {
 		}
 
 		// Final render to ensure everything is properly formatted
+		// Only re-render if we have a response but didn't render during streaming
+		// (e.g., if markdownRenderer was nil during streaming but is now available)
 		if fullResponse != "" && markdownRenderer != nil {
-			// Clear previous rendering and do final render
-			if lastRenderedLines > 0 {
-				fmt.Printf("\033[%dA", lastRenderedLines)
-				fmt.Print("\033[J")
+			// Check if we rendered during streaming (lastRenderedLines > 0 means we did)
+			if lastRenderedLines == 0 {
+				// We didn't render during streaming, so render now
+				fmt.Printf("\n%sAXON:%s\n", colorMagenta+colorBold, colorReset)
+				s.printFormattedMarkdown(fullResponse)
+			} else {
+				// We already rendered during streaming, just ensure newline at end
+				fmt.Println()
 			}
-			s.printFormattedMarkdown(fullResponse)
 		} else if fullResponse != "" {
 			// Fallback: just add newline
 			fmt.Println()
