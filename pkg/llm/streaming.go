@@ -147,6 +147,9 @@ func (c *Client) chatCompletionStream(ctx context.Context, reqBody ChatCompletio
 		// Extract JSON data
 		data := strings.TrimPrefix(line, "data: ")
 
+		// Log raw SSE data for debugging
+		logger.Logf("📡 SSE CHUNK: %s\n", data)
+
 		// Check for done signal
 		if data == "[DONE]" {
 			break
@@ -284,13 +287,19 @@ func (c *Client) chatCompletionStream(ctx context.Context, reqBody ChatCompletio
 			}
 		}
 		// Log final response summary
+		responseText := fullResponse.String()
 		logger.Logf("✅ STREAMING COMPLETE: finish_reason=tool_calls, tool_calls_count=%d\n", len(completeToolCalls))
-		return fullResponse.String(), completeToolCalls, nil
+		if len(responseText) > 0 {
+			logger.Logf("📝 FULL RESPONSE (before tool calls):\n%s\n", responseText)
+		}
+		return responseText, completeToolCalls, nil
 	}
 
 	// Log final response summary for regular responses
-	if fullResponse.Len() > 0 {
-		logger.Logf("✅ STREAMING COMPLETE: finish_reason=%s, response_length=%d\n", finishReason, fullResponse.Len())
+	responseText := fullResponse.String()
+	if len(responseText) > 0 {
+		logger.Logf("✅ STREAMING COMPLETE: finish_reason=%s, response_length=%d\n", finishReason, len(responseText))
+		logger.Logf("📝 FULL RESPONSE:\n%s\n", responseText)
 	}
-	return fullResponse.String(), nil, nil
+	return responseText, nil, nil
 }

@@ -1,12 +1,15 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -58,26 +61,21 @@ func (s *Server) Start() error {
 	}
 
 	fmt.Fprintf(os.Stderr, "%sStarting llama-server...%s\n", colorBlue+colorBold, colorReset)
+	fmt.Fprintf(os.Stderr, "%sNote: If this is the first time using this model, it will be downloaded.%s\n", colorYellow, colorReset)
+	fmt.Fprintf(os.Stderr, "%sThis may take several minutes depending on model size and internet speed.%s\n", colorYellow, colorReset)
+	fmt.Fprintf(os.Stderr, "\n")
 
 	// Create command
 	s.cmd = exec.Command(s.serverPath, s.args...)
 
-	// Redirect output based on debug mode
-	if s.debug {
-		// In debug mode, redirect to stderr so we can see it
-		s.cmd.Stdout = os.Stderr
-		s.cmd.Stderr = os.Stderr
-	} else {
-		// In normal mode, redirect to /dev/null to hide output
-		devNull, err := os.OpenFile("/dev/null", os.O_WRONLY, 0)
-		if err == nil {
-			s.cmd.Stdout = devNull
-			s.cmd.Stderr = devNull
-		} else {
-			// Fallback if /dev/null doesn't exist (shouldn't happen on Unix)
-			s.cmd.Stdout = nil
-			s.cmd.Stderr = nil
-		}
+	// Create pipes to capture output
+	stdoutPipe, err := s.cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+	stderrPipe, err := s.cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
 
 	// Start the process
@@ -86,12 +84,55 @@ func (s *Server) Start() error {
 	}
 
 	fmt.Fprintf(os.Stderr, "%sWaiting for server to be ready...%s\n", colorYellow, colorReset)
+	fmt.Fprintf(os.Stderr, "%s(This may take a while if downloading the model)%s\n\n", colorYellow, colorReset)
+
+	// Start goroutines to handle output
+	outputDone := make(chan bool, 2)
+	
+	// Handle stdout - show important messages, filter out debug noise
+	go func() {
+		scanner := bufio.NewScanner(stdoutPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			// Only show lines that are likely important (download progress, errors, etc.)
+			// Filter out verbose debug output like "slot update_slots", "slot launch_slot_", etc.
+			if s.shouldShowOutput(line) {
+				fmt.Fprintf(os.Stderr, "%s\n", line)
+			}
+		}
+		outputDone <- true
+	}()
+
+	// Handle stderr - show important messages
+	go func() {
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if s.shouldShowOutput(line) {
+				fmt.Fprintf(os.Stderr, "%s\n", line)
+			}
+		}
+		outputDone <- true
+	}()
 
 	// Wait for server to be ready
-	if err := s.waitForReady(30 * time.Second); err != nil {
+	// Use longer timeout (5 minutes) to allow for model downloads
+	if err := s.waitForReady(5 * time.Minute); err != nil {
 		s.Stop() // Try to stop if we failed to start
 		return fmt.Errorf("server failed to become ready: %w", err)
 	}
+
+	// After server is ready, continue reading output but filter it more aggressively
+	// (in background, don't block)
+	go func() {
+		// Wait for initial output to finish
+		<-outputDone
+		<-outputDone
+		
+		// Continue reading but discard verbose output
+		io.Copy(io.Discard, stdoutPipe)
+		io.Copy(io.Discard, stderrPipe)
+	}()
 
 	fmt.Fprintf(os.Stderr, "%sLLM server is ready at %s%s\n", colorGreen+colorBold, s.baseURL, colorReset)
 	return nil
@@ -138,15 +179,30 @@ func (s *Server) waitForReady(timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	ticker := time.NewTicker(500 * time.Millisecond)
+	// Check every 2 seconds
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+
+	startTime := time.Now()
+	lastStatusTime := startTime
 
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for server to be ready")
+			elapsed := time.Since(startTime)
+			fmt.Fprintf(os.Stderr, "\n")
+			return fmt.Errorf("timeout waiting for server to be ready (waited %v)", elapsed.Round(time.Second))
 		case <-ticker.C:
+			// Show status message every 10 seconds
+			elapsed := time.Since(lastStatusTime)
+			if elapsed >= 10*time.Second {
+				totalElapsed := time.Since(startTime)
+				fmt.Fprintf(os.Stderr, "%s[Still waiting... %v elapsed]%s\n", colorYellow, totalElapsed.Round(time.Second), colorReset)
+				lastStatusTime = time.Now()
+			}
+
 			if s.isRunning() {
+				fmt.Fprintf(os.Stderr, "\n")
 				return nil
 			}
 		}
@@ -186,6 +242,40 @@ func (s *Server) SetupSignalHandling() {
 		s.Stop()
 		os.Exit(0)
 	}()
+}
+
+// shouldShowOutput determines if a line of output should be shown to the user
+// Filters out verbose debug output from llama-server
+func (s *Server) shouldShowOutput(line string) bool {
+	// In debug mode, show everything
+	if s.debug {
+		return true
+	}
+
+	// Filter out verbose slot/debug messages
+	lowerLine := strings.ToLower(line)
+	skipPatterns := []string{
+		"slot update_slots",
+		"slot launch_slot_",
+		"slot get_availabl",
+		"params_from_",
+		"chat format:",
+		"sampler chain:",
+		"processing task",
+		"prompt processing progress",
+		"n_tokens =",
+		"memory_seq_rm",
+		"batch.n_tokens",
+	}
+
+	for _, pattern := range skipPatterns {
+		if strings.Contains(lowerLine, pattern) {
+			return false
+		}
+	}
+
+	// Show everything else (errors, important messages, download progress, etc.)
+	return true
 }
 
 // CheckRunning checks if a server is already running at the given URL

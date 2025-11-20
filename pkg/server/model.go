@@ -94,7 +94,16 @@ func interactiveSelect(title string, items []string, descriptions []string, defa
 		// Fallback to simple input if raw mode fails
 		return simpleSelect(title, items, descriptions, defaultIndex)
 	}
-	defer term.Restore(fd, oldState)
+
+	// Ensure terminal is restored even on panic
+	defer func() {
+		term.Restore(fd, oldState)
+		// Show cursor again
+		fmt.Fprintf(os.Stderr, "\033[?25h")
+	}()
+
+	// Hide cursor for cleaner menu
+	fmt.Fprintf(os.Stderr, "\033[?25l")
 
 	selected := defaultIndex
 	reader := bufio.NewReader(os.Stdin)
@@ -114,34 +123,43 @@ func interactiveSelect(title string, items []string, descriptions []string, defa
 
 		// Handle escape sequences (arrow keys)
 		if char == 0x1b { // ESC
-			// Peek at next bytes to see if it's an arrow key sequence
-			peeked, err := reader.Peek(2)
-			if err == nil && len(peeked) >= 2 && peeked[0] == '[' {
-				// Consume the peeked bytes
-				reader.Discard(2)
-				switch peeked[1] {
-				case 'A': // Up arrow
-					if selected > 0 {
-						selected--
-					} else {
-						selected = len(items) - 1
-					}
-					redrawMenu(title, items, descriptions, selected)
-				case 'B': // Down arrow
-					if selected < len(items)-1 {
-						selected++
-					} else {
-						selected = 0
-					}
-					redrawMenu(title, items, descriptions, selected)
+			// Read the next two bytes to determine the arrow key
+			// Use ReadByte to ensure we get all bytes
+			next1, err1 := reader.ReadByte()
+			if err1 != nil {
+				continue
+			}
+			if next1 != '[' {
+				// Not an arrow key sequence, ignore
+				continue
+			}
+			next2, err2 := reader.ReadByte()
+			if err2 != nil {
+				continue
+			}
+			switch next2 {
+			case 'A': // Up arrow
+				if selected > 0 {
+					selected--
+				} else {
+					selected = len(items) - 1
 				}
+				redrawMenu(title, items, descriptions, selected)
+			case 'B': // Down arrow
+				if selected < len(items)-1 {
+					selected++
+				} else {
+					selected = 0
+				}
+				redrawMenu(title, items, descriptions, selected)
 			}
 			continue
 		}
 
 		// Handle Enter key
 		if char == '\r' || char == '\n' {
-			fmt.Fprintf(os.Stderr, "\n")
+			// Clear the menu before returning
+			fmt.Fprintf(os.Stderr, "\033[2J\033[H\033[?25h")
 			return selected, nil
 		}
 
@@ -150,7 +168,8 @@ func interactiveSelect(title string, items []string, descriptions []string, defa
 			num := int(char - '0')
 			if num <= len(items) {
 				selected = num - 1
-				fmt.Fprintf(os.Stderr, "\n")
+				// Clear the menu before returning
+				fmt.Fprintf(os.Stderr, "\033[2J\033[H\033[?25h")
 				return selected, nil
 			}
 		}
@@ -204,6 +223,8 @@ func simpleSelect(title string, items []string, descriptions []string, defaultIn
 
 // printMenu prints the menu with the selected item highlighted
 func printMenu(title string, items []string, descriptions []string, selected int) {
+	// Only clear screen if this is the first print (not a redraw)
+	// We'll use a different approach - save cursor position and restore
 	fmt.Fprintf(os.Stderr, "\033[2J\033[H") // Clear screen and move to top
 	fmt.Fprintf(os.Stderr, "════════════════════════════════════════════════════════════\n")
 	fmt.Fprintf(os.Stderr, "  %s\n", title)

@@ -89,6 +89,9 @@ func (c *Client) ChatWithTools(ctx context.Context, messages []Message, tools []
 		}
 
 		// Model returned a regular response (not a tool call)
+		if len(assistantMsg.Content) > 0 {
+			logger.Logf("📝 FULL RESPONSE:\n%s\n", assistantMsg.Content)
+		}
 		return assistantMsg.Content, nil
 	}
 
