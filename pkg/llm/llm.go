@@ -67,6 +67,7 @@ func GetSystemPrompt() string {
 		"You have access to tools that let you read files, list directories, search code, and modify files.\n" +
 		"When you need to examine code, use the available tools instead of asking the user.\n" +
 		"IMPORTANT: All write operations (write_file, create_file, update_file, string_replace, create_directory) require interactive user confirmation. The user will be prompted before any file or directory modification occurs.\n" +
+		"IMPORTANT: There is NO 'cd' tool. To list directory contents, use 'list_directory' with the 'path' parameter. Example: list_directory({\"path\": \"test\"}) to list contents of the 'test' directory. Use empty path or omit it to list the project root.\n" +
 		"You always respond with high-quality, concise code examples and short, focused explanations.\n" +
 		"Prefer code blocks with proper language identifiers (```php, ```go, ```ts, etc.).\n" +
 		"When given code from files, base your reasoning ONLY on this code and the described context. If you are missing information, use tools to read files before guessing.\n" +

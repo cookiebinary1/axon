@@ -37,6 +37,32 @@ func (s *Session) confirmAction(action, description string) (bool, error) {
 	return response == "yes" || response == "y", nil
 }
 
+// getUnknownToolError returns a helpful error message for unknown tools
+// with suggestions for common mistakes
+func (s *Session) getUnknownToolError(toolName string) error {
+	// Common tool name mistakes and their correct alternatives
+	suggestions := map[string]string{
+		"cd":    "Use 'list_directory' with the 'path' parameter to list contents of a directory. Example: list_directory({\"path\": \"test\"})",
+		"ls":    "Use 'list_directory' with the 'path' parameter. Example: list_directory({\"path\": \"test\"})",
+		"cat":   "Use 'read_file' to read file contents. Example: read_file({\"path\": \"file.txt\"})",
+		"grep":  "The 'grep' tool is available. Use it with 'pattern' parameter. Example: grep({\"pattern\": \"search_term\"})",
+		"find":  "Use 'find_files' or 'find_files_by_extension' to search for files. Example: find_files({\"pattern\": \"*.go\"})",
+		"mkdir": "Use 'create_directory' to create directories. Example: create_directory({\"path\": \"newdir\"})",
+		"rm":    "Use 'delete_file' or 'delete_directory' to remove files/directories. Example: delete_file({\"path\": \"file.txt\"})",
+		"mv":    "Use 'move_file' to move or rename files. Example: move_file({\"source\": \"old.txt\", \"destination\": \"new.txt\"})",
+		"cp":    "Use 'copy_file' to copy files. Example: copy_file({\"source\": \"file.txt\", \"destination\": \"copy.txt\"})",
+		"pwd":   "Use 'execute' tool to run shell commands. Example: execute({\"command\": \"pwd\"})",
+	}
+
+	// Check if we have a suggestion for this tool name
+	if suggestion, ok := suggestions[strings.ToLower(toolName)]; ok {
+		return fmt.Errorf("unknown tool '%s'. %s", toolName, suggestion)
+	}
+
+	// Generic error with list of common tools
+	return fmt.Errorf("unknown tool '%s'. Available tools include: read_file, list_directory, grep, read_file_lines, write_file, create_file, update_file, string_replace, create_directory, get_tree_list, get_file_symbols, delete_file, delete_directory, move_file, copy_file, find_files, find_files_by_extension, search_symbols, get_project_stats, get_file_info, find_dependencies, git_status, git_diff, find_symbol_references, execute. Note: There is no 'cd' tool - use 'list_directory' with a 'path' parameter to list directory contents.", toolName)
+}
+
 // ExecuteTool executes a tool call and returns the result
 func (s *Session) ExecuteTool(name string, args map[string]interface{}) (string, error) {
 	// Log tool execution
@@ -98,7 +124,8 @@ func (s *Session) ExecuteTool(name string, args map[string]interface{}) (string,
 	case "execute":
 		result, err = s.toolExecute(args)
 	default:
-		err = fmt.Errorf("unknown tool: %s", name)
+		// Provide helpful error message with suggestions for common mistakes
+		err = s.getUnknownToolError(name)
 	}
 
 	// Log result
