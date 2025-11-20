@@ -1,0 +1,1 @@
+Tu je test zadanie, spravme program v lua, co vypise prvych 100 prvocisiel
