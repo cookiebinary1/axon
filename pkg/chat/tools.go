@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -13,12 +12,17 @@ import (
 	"github.com/axon/pkg/logger"
 )
 
+// resolvePath safely resolves a path relative to project root and validates it's within the root
+func (s *Session) resolvePath(path string) (string, error) {
+	return fsctx.ResolvePath(s.projectRoot, path)
+}
+
 // confirmAction asks the user to confirm an action interactively
 func (s *Session) confirmAction(action, description string) (bool, error) {
 	fmt.Printf("\n%s⚠️  WRITE OPERATION REQUESTED%s\n", colorYellow+colorBold, colorReset)
 	fmt.Printf("%sAction:%s %s\n", colorCyan, colorReset, action)
 	fmt.Printf("%sDetails:%s %s\n", colorCyan, colorReset, description)
-	fmt.Printf("%sDo you want to proceed? (yes/no/y/n):%s ", colorYellow+colorBold, colorReset)
+	fmt.Printf("%sDo you want to proceed? [Y,n]:%s ", colorYellow+colorBold, colorReset)
 
 	// Use the session's scanner for input
 	if !s.scanner.Scan() {
@@ -26,6 +30,10 @@ func (s *Session) confirmAction(action, description string) (bool, error) {
 	}
 
 	response := strings.TrimSpace(strings.ToLower(s.scanner.Text()))
+	// Empty input (just Enter) defaults to "yes"
+	if response == "" {
+		return true, nil
+	}
 	return response == "yes" || response == "y", nil
 }
 
@@ -57,6 +65,38 @@ func (s *Session) ExecuteTool(name string, args map[string]interface{}) (string,
 		result, err = s.toolStringReplace(args)
 	case "create_directory":
 		result, err = s.toolCreateDirectory(args)
+	case "get_tree_list":
+		result, err = s.toolGetTreeList(args)
+	case "get_file_symbols":
+		result, err = s.toolGetFileSymbols(args)
+	case "delete_file":
+		result, err = s.toolDeleteFile(args)
+	case "delete_directory":
+		result, err = s.toolDeleteDirectory(args)
+	case "move_file":
+		result, err = s.toolMoveFile(args)
+	case "copy_file":
+		result, err = s.toolCopyFile(args)
+	case "find_files":
+		result, err = s.toolFindFiles(args)
+	case "find_files_by_extension":
+		result, err = s.toolFindFilesByExtension(args)
+	case "search_symbols":
+		result, err = s.toolSearchSymbols(args)
+	case "get_project_stats":
+		result, err = s.toolGetProjectStats(args)
+	case "get_file_info":
+		result, err = s.toolGetFileInfo(args)
+	case "find_dependencies":
+		result, err = s.toolFindDependencies(args)
+	case "git_status":
+		result, err = s.toolGitStatus(args)
+	case "git_diff":
+		result, err = s.toolGitDiff(args)
+	case "find_symbol_references":
+		result, err = s.toolFindSymbolReferences(args)
+	case "execute":
+		result, err = s.toolExecute(args)
 	default:
 		err = fmt.Errorf("unknown tool: %s", name)
 	}
@@ -100,7 +140,11 @@ func (s *Session) toolListDirectory(args map[string]interface{}) (string, error)
 		path = p
 	}
 
-	fullPath := filepath.Join(s.projectRoot, path)
+	fullPath, err := s.resolvePath(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
+
 	entries, err := os.ReadDir(fullPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read directory: %w", err)
@@ -158,7 +202,11 @@ func (s *Session) toolGrep(args map[string]interface{}) (string, error) {
 	if searchPath == "" {
 		searchPath = s.projectRoot
 	} else {
-		searchPath = filepath.Join(s.projectRoot, searchPath)
+		resolved, err := s.resolvePath(searchPath)
+		if err != nil {
+			return "", fmt.Errorf("invalid path: %w", err)
+		}
+		searchPath = resolved
 	}
 
 	// Use ripgrep if available, otherwise grep
@@ -258,7 +306,11 @@ func (s *Session) toolWriteFile(args map[string]interface{}) (string, error) {
 	}
 
 	// Check if file exists
-	fullPath := filepath.Join(s.projectRoot, path)
+	fullPath, err := s.resolvePath(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
+
 	fileExists := false
 	if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
 		fileExists = true
@@ -307,7 +359,11 @@ func (s *Session) toolCreateFile(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("content argument is required")
 	}
 
-	fullPath := filepath.Join(s.projectRoot, path)
+	fullPath, err := s.resolvePath(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
+
 	if _, err := os.Stat(fullPath); err == nil {
 		return "", fmt.Errorf("file already exists: %s", path)
 	}
@@ -351,7 +407,11 @@ func (s *Session) toolUpdateFile(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("content argument is required")
 	}
 
-	fullPath := filepath.Join(s.projectRoot, path)
+	fullPath, err := s.resolvePath(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
+
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("file does not exist: %s", path)
 	}
@@ -452,7 +512,10 @@ func (s *Session) toolCreateDirectory(args map[string]interface{}) (string, erro
 		return "", fmt.Errorf("path argument is required")
 	}
 
-	fullPath := filepath.Join(s.projectRoot, path)
+	fullPath, err := s.resolvePath(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
 
 	// Check if already exists
 	if info, err := os.Stat(fullPath); err == nil {
@@ -483,6 +546,88 @@ func (s *Session) toolCreateDirectory(args map[string]interface{}) (string, erro
 		"path":    path,
 		"success": true,
 		"message": "Directory created successfully",
+	}
+
+	jsonResult, _ := json.Marshal(result)
+	return string(jsonResult), nil
+}
+
+// toolGetTreeList returns a tree view of files and directories
+func (s *Session) toolGetTreeList(args map[string]interface{}) (string, error) {
+	path := ""
+	if p, ok := args["path"].(string); ok {
+		path = p
+	}
+
+	if s.index == nil {
+		return "", fmt.Errorf("project index not available")
+	}
+
+	tree, err := s.index.GetTree(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to get tree: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"path": path,
+		"tree": tree,
+	}
+
+	jsonResult, _ := json.Marshal(result)
+	return string(jsonResult), nil
+}
+
+// toolGetFileSymbols returns symbols (classes, functions) from a file
+func (s *Session) toolGetFileSymbols(args map[string]interface{}) (string, error) {
+	path, ok := args["path"].(string)
+	if !ok || path == "" {
+		return "", fmt.Errorf("path argument is required")
+	}
+
+	if s.index == nil {
+		return "", fmt.Errorf("project index not available")
+	}
+
+	symbols, err := s.index.GetFileSymbols(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to get file symbols: %w", err)
+	}
+
+	// Group symbols by type
+	classes := []map[string]interface{}{}
+	functions := []map[string]interface{}{}
+	structs := []map[string]interface{}{}
+	others := []map[string]interface{}{}
+
+	for _, sym := range symbols {
+		symData := map[string]interface{}{
+			"name": sym.Name,
+			"type": sym.Type,
+			"line": sym.Line,
+		}
+		if sym.Signature != "" {
+			symData["signature"] = sym.Signature
+		}
+
+		switch sym.Type {
+		case "class", "interface":
+			classes = append(classes, symData)
+		case "struct":
+			structs = append(structs, symData)
+		case "function", "method":
+			functions = append(functions, symData)
+		default:
+			others = append(others, symData)
+		}
+	}
+
+	result := map[string]interface{}{
+		"path":      path,
+		"classes":   classes,
+		"structs":   structs,
+		"functions": functions,
+		"others":    others,
+		"total":     len(symbols),
 	}
 
 	jsonResult, _ := json.Marshal(result)

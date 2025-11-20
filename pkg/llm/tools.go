@@ -215,5 +215,290 @@ func GetAvailableTools() []Tool {
 				},
 			},
 		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "get_tree_list",
+				Description: "Get a tree view of files and directories starting from a given path. Returns a hierarchical structure excluding ignored files/folders. Path is relative to project root. Use empty string for project root.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the directory relative to project root (empty string for project root)",
+						},
+					},
+					"required": []string{},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "get_file_symbols",
+				Description: "Get a list of classes, functions, and other symbols from a code file. Path is relative to project root.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the file relative to project root",
+						},
+					},
+					"required": []string{"path"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "delete_file",
+				Description: "Delete a file. Path is relative to project root. Requires user confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the file relative to project root",
+						},
+					},
+					"required": []string{"path"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "delete_directory",
+				Description: "Delete a directory and all its contents. Path is relative to project root. Requires user confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the directory relative to project root",
+						},
+					},
+					"required": []string{"path"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "move_file",
+				Description: "Move or rename a file. Paths are relative to project root. Requires user confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"source": map[string]interface{}{
+							"type":        "string",
+							"description": "Source path relative to project root",
+						},
+						"destination": map[string]interface{}{
+							"type":        "string",
+							"description": "Destination path relative to project root",
+						},
+					},
+					"required": []string{"source", "destination"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "copy_file",
+				Description: "Copy a file to a new location. Paths are relative to project root. Creates destination directory if needed. Requires user confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"source": map[string]interface{}{
+							"type":        "string",
+							"description": "Source path relative to project root",
+						},
+						"destination": map[string]interface{}{
+							"type":        "string",
+							"description": "Destination path relative to project root",
+						},
+					},
+					"required": []string{"source", "destination"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "find_files",
+				Description: "Find files by name pattern (glob pattern). Searches recursively from the given path (defaults to project root).",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"pattern": map[string]interface{}{
+							"type":        "string",
+							"description": "File name pattern (glob, e.g., '*.go', 'test_*.php')",
+						},
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to search from (relative to project root, empty string for project root)",
+						},
+					},
+					"required": []string{"pattern"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "find_files_by_extension",
+				Description: "Find all files with a specific extension. Searches recursively from the given path (defaults to project root).",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"extension": map[string]interface{}{
+							"type":        "string",
+							"description": "File extension (e.g., '.go', '.php', '.js') - include the dot",
+						},
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to search from (relative to project root, empty string for project root)",
+						},
+					},
+					"required": []string{"extension"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "search_symbols",
+				Description: "Search for a symbol (class, function, variable name) across the project. Returns all files where the symbol is defined or used.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"symbol": map[string]interface{}{
+							"type":        "string",
+							"description": "Symbol name to search for",
+						},
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to search from (relative to project root, empty string for project root)",
+						},
+					},
+					"required": []string{"symbol"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "get_project_stats",
+				Description: "Get project statistics: file count, lines of code, languages used, etc.",
+				Parameters: map[string]interface{}{
+					"type":       "object",
+					"properties": map[string]interface{}{},
+					"required":   []string{},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "get_file_info",
+				Description: "Get detailed information about a file: size, modification time, permissions, line count, etc.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the file relative to project root",
+						},
+					},
+					"required": []string{"path"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "find_dependencies",
+				Description: "Find and list project dependencies from package.json, go.mod, composer.json, requirements.txt, Cargo.toml, etc.",
+				Parameters: map[string]interface{}{
+					"type":       "object",
+					"properties": map[string]interface{}{},
+					"required":   []string{},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "git_status",
+				Description: "Get git repository status. Returns modified, added, deleted, and untracked files. Works only if project is a git repository.",
+				Parameters: map[string]interface{}{
+					"type":       "object",
+					"properties": map[string]interface{}{},
+					"required":   []string{},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "git_diff",
+				Description: "Get git diff for a file or directory. Returns changes made. Works only if project is a git repository.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to the file or directory relative to project root (empty string for entire repository)",
+						},
+					},
+					"required": []string{},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "find_symbol_references",
+				Description: "Find all places where a symbol (class, function, variable) is used or referenced in the project. Searches code for occurrences of the symbol name.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"symbol": map[string]interface{}{
+							"type":        "string",
+							"description": "Symbol name to search for",
+						},
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Path to search from (relative to project root, empty string for project root)",
+						},
+					},
+					"required": []string{"symbol"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "execute",
+				Description: "Execute a shell command in the project root directory. Returns stdout, stderr, and exit code. Requires user confirmation.",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"command": map[string]interface{}{
+							"type":        "string",
+							"description": "Shell command to execute",
+						},
+						"description": map[string]interface{}{
+							"type":        "string",
+							"description": "Optional description of what this command does (for confirmation prompt)",
+						},
+					},
+					"required": []string{"command"},
+				},
+			},
+		},
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/axon/pkg/fsctx"
+	"github.com/axon/pkg/indexer"
 	"github.com/axon/pkg/llm"
 	"github.com/axon/pkg/project"
 	"github.com/charmbracelet/glamour"
@@ -33,10 +34,11 @@ type Session struct {
 	messages    []llm.Message
 	debug       bool
 	scanner     *bufio.Scanner // Scanner for user input (used for confirmations)
+	index       *indexer.Index // Project index
 }
 
 // NewSession creates a new chat session
-func NewSession(client *llm.Client, projectRoot string, cfg *project.Config, debug bool) *Session {
+func NewSession(client *llm.Client, projectRoot string, cfg *project.Config, debug bool, projectIndex *indexer.Index) *Session {
 	session := &Session{
 		client:      client,
 		projectRoot: projectRoot,
@@ -44,6 +46,7 @@ func NewSession(client *llm.Client, projectRoot string, cfg *project.Config, deb
 		messages:    make([]llm.Message, 0),
 		debug:       debug,
 		scanner:     bufio.NewScanner(os.Stdin),
+		index:       projectIndex,
 	}
 
 	// Add system message
@@ -109,15 +112,65 @@ func (s *Session) Start() error {
 		// Store original message count
 		originalCount := len(s.messages)
 
-		// Streaming callback - print tokens as they arrive
+		// Buffer to accumulate markdown for real-time rendering
+		var markdownBuffer strings.Builder
+		var lastRenderedLines int
+		var lastRenderLength int
+		renderCounter := 0
+
+		// Initialize markdown renderer once
+		markdownRenderer, err := glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(80),
+		)
+		if err != nil {
+			// Fallback to basic rendering if glamour fails
+			markdownRenderer = nil
+		}
+
+		// Streaming callback - render markdown in real-time
 		firstToken := true
 		streamCallback := func(chunk string) error {
 			if firstToken {
-				fmt.Printf("\n%sAXON:%s ", colorMagenta+colorBold, colorReset)
+				fmt.Printf("\n%sAXON:%s\n", colorMagenta+colorBold, colorReset)
 				firstToken = false
+				lastRenderedLines = 0
+				lastRenderLength = 0
 			}
-			// Print raw chunk for immediate feedback during streaming
-			fmt.Print(chunk)
+
+			// Accumulate chunk
+			markdownBuffer.WriteString(chunk)
+			currentBuffer := markdownBuffer.String()
+			currentLength := len(currentBuffer)
+
+			// Render periodically or when structure changes (e.g., code block closes)
+			shouldRender := false
+			renderCounter++
+
+			// Render if:
+			// 1. Every 3 chunks (throttling for performance)
+			// 2. Code block opens or closes (```)
+			// 3. Significant length change (new paragraph/section)
+			// 4. Newline character (likely end of sentence/paragraph)
+			if renderCounter%3 == 0 {
+				shouldRender = true
+			} else if strings.Contains(chunk, "```") {
+				shouldRender = true
+			} else if strings.Contains(chunk, "\n") {
+				shouldRender = true
+			} else if currentLength-lastRenderLength > 50 {
+				shouldRender = true
+			}
+
+			// Try to render the accumulated markdown
+			if markdownRenderer != nil && shouldRender {
+				s.renderStreamingMarkdown(markdownRenderer, currentBuffer, &lastRenderedLines)
+				lastRenderLength = currentLength
+			} else if markdownRenderer == nil {
+				// Fallback: just print the chunk
+				fmt.Print(chunk)
+			}
+
 			return nil
 		}
 
@@ -131,12 +184,17 @@ func (s *Session) Start() error {
 			continue
 		}
 
-		// Render markdown-formatted response
-		if fullResponse != "" {
-			// Clear the last line (where "AXON:" was printed) and render formatted markdown
-			fmt.Print("\r\033[K") // Clear current line
-			fmt.Printf("%sAXON:%s\n", colorMagenta+colorBold, colorReset)
+		// Final render to ensure everything is properly formatted
+		if fullResponse != "" && markdownRenderer != nil {
+			// Clear previous rendering and do final render
+			if lastRenderedLines > 0 {
+				fmt.Printf("\033[%dA", lastRenderedLines)
+				fmt.Print("\033[J")
+			}
 			s.printFormattedMarkdown(fullResponse)
+		} else if fullResponse != "" {
+			// Fallback: just add newline
+			fmt.Println()
 		} else {
 			// Add newline after streaming response
 			fmt.Println()
@@ -274,6 +332,38 @@ func (s *Session) printHelp() {
 	fmt.Println("   /exit, /quit, /q   - Exit the chat")
 	fmt.Printf("\n%sYou can also just type questions naturally!%s\n", colorYellow, colorReset)
 	fmt.Println("   Example: \"How do I implement rate limiting in Laravel?\"")
+}
+
+// renderStreamingMarkdown renders markdown in real-time during streaming
+// It clears previous output and re-renders the accumulated markdown
+func (s *Session) renderStreamingMarkdown(renderer *glamour.TermRenderer, markdown string, lastLines *int) {
+	// Try to render the markdown
+	out, err := renderer.Render(markdown)
+	if err != nil {
+		// If rendering fails (e.g., incomplete markdown), skip this render
+		// We'll try again on the next chunk
+		return
+	}
+
+	// Count lines in the rendered output (including the header line with "AXON:")
+	renderedLines := strings.Count(out, "\n")
+	if renderedLines == 0 && out != "" {
+		renderedLines = 1
+	}
+
+	// Clear previous rendering (move up and clear)
+	if *lastLines > 0 {
+		// Move cursor up by number of rendered lines
+		fmt.Printf("\033[%dA", *lastLines)
+		// Clear from cursor to end of screen
+		fmt.Print("\033[J")
+	}
+
+	// Print the newly rendered markdown
+	fmt.Print(out)
+
+	// Update line count
+	*lastLines = renderedLines
 }
 
 // printFormattedMarkdown renders and prints markdown with syntax highlighting

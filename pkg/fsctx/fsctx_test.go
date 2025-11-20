@@ -80,17 +80,27 @@ func TestResolvePath(t *testing.T) {
 	projectRoot := tmpDir
 
 	tests := []struct {
-		path     string
-		expected string
+		path        string
+		expected    string
+		expectError bool
 	}{
-		{"relative/path.go", filepath.Join(projectRoot, "relative/path.go")},
-		{"/absolute/path.go", "/absolute/path.go"},
+		{"relative/path.go", filepath.Join(projectRoot, "relative/path.go"), false},
+		{"../outside.go", "", true},    // Should reject paths outside project root
+		{"../../etc/passwd", "", true}, // Should reject path traversal
 	}
 
 	for _, tt := range tests {
-		result := ResolvePath(projectRoot, tt.path)
-		if result != tt.expected {
-			t.Errorf("ResolvePath(%q, %q) = %q, expected %q", projectRoot, tt.path, result, tt.expected)
+		result, err := ResolvePath(projectRoot, tt.path)
+		if tt.expectError {
+			if err == nil {
+				t.Errorf("ResolvePath(%q, %q) expected error, got nil", projectRoot, tt.path)
+			}
+		} else {
+			if err != nil {
+				t.Errorf("ResolvePath(%q, %q) unexpected error: %v", projectRoot, tt.path, err)
+			} else if result != tt.expected {
+				t.Errorf("ResolvePath(%q, %q) = %q, expected %q", projectRoot, tt.path, result, tt.expected)
+			}
 		}
 	}
 }

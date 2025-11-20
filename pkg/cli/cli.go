@@ -151,7 +151,11 @@ func HandleSearch(pattern string, searchPath string, explain bool, projectRoot s
 	if searchPath == "" {
 		searchPath = projectRoot
 	} else {
-		searchPath = fsctx.ResolvePath(projectRoot, searchPath)
+		resolvedPath, err := fsctx.ResolvePath(projectRoot, searchPath)
+		if err != nil {
+			return fmt.Errorf("invalid search path: %w", err)
+		}
+		searchPath = resolvedPath
 	}
 
 	// Execute search command

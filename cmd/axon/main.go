@@ -6,6 +6,7 @@ import (
 
 	"github.com/axon/pkg/chat"
 	"github.com/axon/pkg/cli"
+	"github.com/axon/pkg/indexer"
 	"github.com/axon/pkg/llm"
 	"github.com/axon/pkg/logger"
 	"github.com/axon/pkg/project"
@@ -110,11 +111,21 @@ func main() {
 }
 
 func startInteractiveMode(projectRoot string, cfg *project.Config, srv *server.Server) {
+	// Index the project
+	fmt.Printf("%s📚 Indexing project...%s\n", colorYellow, colorReset)
+	projectIndex := indexer.NewIndex(projectRoot, cfg)
+	if err := projectIndex.IndexProject(); err != nil {
+		fmt.Fprintf(os.Stderr, "%sWarning: Failed to index project:%s %v\n", colorYellow+colorBold, colorReset, err)
+		fmt.Fprintf(os.Stderr, "   Continuing without full index...\n")
+	} else {
+		fmt.Printf("%s✅ Project indexed successfully%s\n", colorGreen, colorReset)
+	}
+
 	// Create LLM client
 	client := llm.NewClient(cfg.LLM.BaseURL, cfg.LLM.Model, cfg.LLM.Temperature)
 
 	// Create chat session with server reference for cleanup
-	session := chat.NewSession(client, projectRoot, cfg, cli.Debug)
+	session := chat.NewSession(client, projectRoot, cfg, cli.Debug, projectIndex)
 
 	// Start interactive chat
 	err := session.Start()

@@ -124,8 +124,6 @@ func (c *Client) chatCompletionStream(ctx context.Context, reqBody ChatCompletio
 	}
 	defer resp.Body.Close()
 
-	logger.Logf("<<< STREAMING RESPONSE: Status %d\n", resp.StatusCode)
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		logger.LogResponse(resp.StatusCode, string(body))
@@ -178,12 +176,6 @@ func (c *Client) chatCompletionStream(ctx context.Context, reqBody ChatCompletio
 		choice := streamResp.Choices[0]
 		finishReason = choice.FinishReason
 
-		// Log each SSE chunk for debugging
-		hasContent := choice.Delta.Content != ""
-		hasToolCalls := len(choice.Delta.ToolCalls) > 0
-		logger.Logf("📦 SSE CHUNK: finish_reason=%s, has_content=%v, has_tool_calls=%v, tool_calls_count=%d\n",
-			finishReason, hasContent, hasToolCalls, len(choice.Delta.ToolCalls))
-
 		// Handle content delta
 		if choice.Delta.Content != "" {
 			fullResponse.WriteString(choice.Delta.Content)
@@ -200,9 +192,6 @@ func (c *Client) chatCompletionStream(ctx context.Context, reqBody ChatCompletio
 		// Tool calls in streaming format come with an "index" field to identify which tool call
 		if len(choice.Delta.ToolCalls) > 0 {
 			for _, deltaTC := range choice.Delta.ToolCalls {
-				logger.Logf("   🔧 Tool Call Delta: index=%d, id=%q, name=%q, args_len=%d\n",
-					deltaTC.Index, deltaTC.ID, deltaTC.Function.Name, len(deltaTC.Function.Arguments))
-
 				// Find existing tool call by index (if index is valid) or by ID
 				var existingTC *ToolCall
 				if deltaTC.Index >= 0 && deltaTC.Index < len(toolCalls) {
@@ -238,8 +227,6 @@ func (c *Client) chatCompletionStream(ctx context.Context, reqBody ChatCompletio
 					if deltaTC.Function.Arguments != "" {
 						existingTC.Function.Arguments += deltaTC.Function.Arguments
 					}
-					logger.Logf("   ✅ Merged tool call: id=%q, name=%q, total_args_len=%d\n",
-						existingTC.ID, existingTC.Function.Name, len(existingTC.Function.Arguments))
 				} else {
 					// New tool call - ensure index is set
 					if deltaTC.Index < 0 && len(toolCalls) > 0 {
@@ -262,8 +249,6 @@ func (c *Client) chatCompletionStream(ctx context.Context, reqBody ChatCompletio
 					} else {
 						toolCalls = append(toolCalls, deltaTC)
 					}
-					logger.Logf("   ➕ New tool call: index=%d, id=%q, name=%q\n",
-						deltaTC.Index, deltaTC.ID, deltaTC.Function.Name)
 				}
 			}
 		}
@@ -298,8 +283,14 @@ func (c *Client) chatCompletionStream(ctx context.Context, reqBody ChatCompletio
 				completeToolCalls = append(completeToolCalls, tc)
 			}
 		}
+		// Log final response summary
+		logger.Logf("✅ STREAMING COMPLETE: finish_reason=tool_calls, tool_calls_count=%d\n", len(completeToolCalls))
 		return fullResponse.String(), completeToolCalls, nil
 	}
 
+	// Log final response summary for regular responses
+	if fullResponse.Len() > 0 {
+		logger.Logf("✅ STREAMING COMPLETE: finish_reason=%s, response_length=%d\n", finishReason, fullResponse.Len())
+	}
 	return fullResponse.String(), nil, nil
 }
